@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>视频时间戳工具</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+        }
+        #video-container {
+            display: flex;
+            margin-bottom: 20px;
+        }
+        video {
+            max-width: 60%;
+            margin-right: 20px;
+        }
+        #controls {
+            max-width: 35%;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        table th, table td {
+            padding: 8px;
+            border: 1px solid #ddd;
+        }
+        button {
+            margin-top: 10px;
+        }
+        #time-display {
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <h1>视频时间戳工具</h1>
+
+    <!-- 上传视频 -->
+    <input type="file" id="video-file" accept="video/mp4, video/avi">
+    
+    <!-- 视频和控制区域 -->
+    <div id="video-container">
+        <video id="video-player" controls>
+            <p>浏览器不支持视频播放。</p>
+        </video>
+
+        <div id="controls">
+            <button id="mark-start">标记开始时间</button>
+            <span id="start-time-display">开始时间: 未标记</span><br>
+            <button id="mark-end">标记结束时间</button>
+            <span id="end-time-display">结束时间: 未标记</span><br>
+            <select id="category-select">
+                <option value="dialog">对话</option>
+                <option value="background">背景</option>
+            </select>
+            <button id="confirm">确认</button>
+        </div>
+    </div>
+
+    <!-- 时间戳表格 -->
+    <table>
+        <thead>
+            <tr>
+                <th>片段编号</th>
+                <th>开始时间</th>
+                <th>结束时间</th>
+                <th>类别</th>
+                <th>操作</th>
+            </tr>
+        </thead>
+        <tbody id="timestamp-table-body">
+            <!-- 动态生成内容 -->
+        </tbody>
+    </table>
+
+    <!-- 导出按钮 -->
+    <button id="export-timestamps">导出时间戳</button>
+
+    <script>
+      const videoPlayer = document.getElementById('video-player');
+      const videoFileInput = document.getElementById('video-file');
+      const markStartButton = document.getElementById('mark-start');
+      const markEndButton = document.getElementById('mark-end');
+      const categorySelect = document.getElementById('category-select');
+      const confirmButton = document.getElementById('confirm');
+      const exportButton = document.getElementById('export-timestamps');
+      const tableBody = document.getElementById('timestamp-table-body');
+      const startTimeDisplay = document.getElementById('start-time-display');
+      const endTimeDisplay = document.getElementById('end-time-display');
+
+      let startTime = null;
+      let endTime = null;
+      let timestamps = {};
+      let videoFileName = '';
+
+      // 初始化时加载本地存储并检查格式
+      function initializeTimestamps() {
+          const storedData = JSON.parse(localStorage.getItem('timestamps')) || {};
+          // 如果本地数据不是对象，重置为对象
+          if (typeof storedData !== 'object' || Array.isArray(storedData)) {
+              timestamps = {};
+          } else {
+              timestamps = storedData;
+          }
+      }
+
+      // 上传视频
+      videoFileInput.addEventListener('change', (e) => {
+          const file = e.target.files[0];
+          if (file) {
+              videoFileName = file.name.split('.')[0]; // 获取文件名（去除扩展名）
+              const videoURL = URL.createObjectURL(file);
+              videoPlayer.src = videoURL;
+
+              // 清空当前表格并加载新文件的时间戳
+              clearTimestamps();
+              loadTimestamps();
+          }
+      });
+
+      // 清空表格和显示
+      function clearTimestamps() {
+          tableBody.innerHTML = '';
+          startTime = null;
+          endTime = null;
+          startTimeDisplay.textContent = '开始时间: 未标记';
+          endTimeDisplay.textContent = '结束时间: 未标记';
+      }
+
+      // 标记开始时间
+      markStartButton.addEventListener('click', () => {
+          videoPlayer.pause();
+          startTime = videoPlayer.currentTime;
+          startTimeDisplay.textContent = `开始时间: ${startTime.toFixed(2)}秒`;
+
+          // 清空之前的结束时间
+          endTime = null;
+          endTimeDisplay.textContent = '结束时间: 未标记';
+      });
+
+      // 标记结束时间
+      markEndButton.addEventListener('click', () => {
+          videoPlayer.pause();
+          endTime = videoPlayer.currentTime;
+          endTimeDisplay.textContent = `结束时间: ${endTime.toFixed(2)}秒`;
+      });
+
+      // 确认记录时间戳
+      confirmButton.addEventListener('click', () => {
+          if (startTime === null || endTime === null) {
+              alert("请先标记开始和结束时间！");
+              return;
+          }
+          const category = categorySelect.value;
+
+          // 确保为当前文件创建存储数组
+          if (!timestamps[videoFileName]) {
+              timestamps[videoFileName] = [];
+          }
+
+          // 添加新时间戳
+          timestamps[videoFileName].push({
+              start: startTime,
+              end: endTime,
+              category: category
+          });
+
+          // 保存到本地并刷新表格
+          saveTimestamps();
+          renderTable();
+      });
+
+      // 渲染时间戳表格
+      function renderTable() {
+          tableBody.innerHTML = ''; // 清空表格
+          if (timestamps[videoFileName]) {
+              timestamps[videoFileName].forEach((timestamp, index) => {
+                  const row = document.createElement('tr');
+                  row.innerHTML = `
+                      <td>${index + 1}</td>
+                      <td>${timestamp.start.toFixed(2)}秒</td>
+                      <td>${timestamp.end.toFixed(2)}秒</td>
+                      <td>${timestamp.category}</td>
+                      <td><button onclick="deleteTimestamp(${index})">删除</button></td>
+                  `;
+                  tableBody.appendChild(row);
+              });
+          }
+      }
+
+      // 删除时间戳
+      function deleteTimestamp(index) {
+          timestamps[videoFileName].splice(index, 1);
+          saveTimestamps(); // 保存修改
+          renderTable(); // 重新渲染表格
+      }
+
+      // 保存时间戳到localStorage
+      function saveTimestamps() {
+          localStorage.setItem('timestamps', JSON.stringify(timestamps));
+      }
+
+      // 加载对应视频的时间戳
+      function loadTimestamps() {
+          if (timestamps[videoFileName]) {
+              renderTable(); // 渲染表格
+          }
+      }
+
+      // 导出时间戳为CSV
+      exportButton.addEventListener('click', () => {
+          let csvContent = "片段编号,开始时间,结束时间,类别\n";
+          if (timestamps[videoFileName]) {
+              timestamps[videoFileName].forEach((timestamp, index) => {
+                  csvContent += `${index + 1},${timestamp.start.toFixed(2)},${timestamp.end.toFixed(2)},${timestamp.category}\n`;
+              });
+          }
+          const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+          const link = document.createElement('a');
+          link.href = URL.createObjectURL(blob);
+          link.download = `${videoFileName}_timestamps.csv`; // 文件名
+          link.click();
+      });
+
+      // 提醒用户保存时间戳
+      window.onbeforeunload = () => {
+          if (Object.keys(timestamps).length > 0) {
+              return "您有未保存的时间戳记录，确定离开吗？";
+          }
+      };
+
+      // 初始化加载
+      initializeTimestamps();
+    </script>
+
+</body>
+</html>
